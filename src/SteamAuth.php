@@ -82,12 +82,32 @@ class SteamAuth implements SteamAuthInterface
     {
         $this->request = $request;
 
-        $redirect_url = Config::get('steam-auth.redirect_url');
+        $redirect_url = $this->getRedirectUrl();
         $this->authUrl = $this->buildUrl(
-            url($redirect_url, [], Config::get('steam-auth.https'))
+            url($redirect_url, [], $this->isSecure())
         );
 
         $this->guzzleClient = new GuzzleClient();
+    }
+
+    public function getRedirectUrl()
+    {
+        return Config::get('steam-auth.redirect_url');
+    }
+
+    public function getRealmDomain()
+    {
+        return Config::get('steam-auth.realm', $this->request->server('HTTP_HOST'));
+    }
+
+    public function getApiKey()
+    {
+        return Config::get('steam-auth.api_key');
+    }
+
+    public function isSecure()
+    {
+        return Config::get('steam-auth.https');
     }
 
     /**
@@ -206,18 +226,18 @@ class SteamAuth implements SteamAuthInterface
     private function buildUrl($return = null): string
     {
         if (is_null($return)) {
-            $return = url('/', [], Config::get('steam-auth.https'));
+            $return = url('/', [], $this->isSecure());
         }
         if (! is_null($return) && ! $this->validateUrl($return)) {
             throw new RuntimeException('The return URL must be a valid URL with a URI scheme or http or https.');
         }
 
-        $realm = Config::get('steam-auth.realm', $this->request->server('HTTP_HOST'));
+        $realm = $this->getRealmDomain();
         $params = [
             'openid.ns' => self::OPENID_NS,
             'openid.mode' => 'checkid_setup',
             'openid.return_to' => $return,
-            'openid.realm' => (Config::get('steam-auth.https') ? 'https' : 'http').'://'.$realm,
+            'openid.realm' => ($this->isSecure() ? 'https' : 'http').'://'.$realm,
             'openid.identity' => 'http://specs.openid.net/auth/2.0/identifier_select',
             'openid.claimed_id' => 'http://specs.openid.net/auth/2.0/identifier_select',
         ];
@@ -274,13 +294,13 @@ class SteamAuth implements SteamAuthInterface
             return;
         }
 
-        if (empty(Config::get('steam-auth.api_key'))) {
+        if (empty($this->getApiKey())) {
             throw new RuntimeException('The Steam API key has not been specified.');
         }
 
         $response = $this->guzzleClient->request(
             'GET',
-            sprintf(self::STEAM_INFO_URL, Config::get('steam-auth.api_key'), $this->steamId)
+            sprintf(self::STEAM_INFO_URL, $this->getApiKey(), $this->steamId)
         );
         $json = json_decode($response->getBody(), true);
 
